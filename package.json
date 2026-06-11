@@ -18,8 +18,10 @@
     "firebase": "^12.14.0",
     "firebase-admin": "^14.0.0",
     "lucide-react": "^1.17.0",
+    "motion": "^12.40.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "react-markdown": "^10.1.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {

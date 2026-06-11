@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { generateStrategicPlan, generateMediaAssets, refineContent } from './geminiService';
 import { ProjectPreferences, ContentProject } from './types';
 import { FlowchartEditor, FlowchartViewer } from './FlowchartStudio';
@@ -25,24 +26,44 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 // --- UI Components ---
 
 const LoadingOverlay = ({ visible, message }: { visible: boolean, message: string }) => {
-  if (!visible) return null;
   return (
-    <div className="fixed inset-0 z-[100] bg-[#020d0f]/95 backdrop-blur-2xl flex flex-col items-center justify-center animate-in fade-in duration-500">
-      <div className="relative w-32 h-32 mb-10">
-        <div className="absolute inset-0 border-4 border-teal-500/10 rounded-full"></div>
-        <div className="absolute inset-0 border-4 border-t-amber-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
-        <div className="absolute inset-4 border-4 border-t-teal-400 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin reverse duration-1000"></div>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 bg-amber-500/20 rounded-full animate-pulse flex items-center justify-center text-3xl">✨</div>
-        </div>
-      </div>
-      <h3 className="text-2xl font-black text-white mb-3 tracking-tight text-center px-6 leading-relaxed max-w-md">{message}</h3>
-      <div className="flex gap-1.5">
-        <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-bounce"></div>
-        <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-bounce delay-100"></div>
-        <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-bounce delay-200"></div>
-      </div>
-    </div>
+    <AnimatePresence>
+      {visible && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] bg-[#020d0f]/95 backdrop-blur-2xl flex flex-col items-center justify-center"
+        >
+          <div className="relative w-32 h-32 mb-10">
+            <div className="absolute inset-0 border-4 border-teal-500/10 rounded-full"></div>
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+              className="absolute inset-0 border-4 border-t-amber-500 border-r-transparent border-b-transparent border-l-transparent rounded-full"
+            ></motion.div>
+            <motion.div 
+              animate={{ rotate: -360 }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+              className="absolute inset-4 border-4 border-t-teal-400 border-r-transparent border-b-transparent border-l-transparent rounded-full"
+            ></motion.div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <motion.div 
+                 animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                 transition={{ repeat: Infinity, duration: 2 }}
+                 className="w-12 h-12 bg-amber-500/20 rounded-full flex items-center justify-center text-3xl"
+              >✨</motion.div>
+            </div>
+          </div>
+          <h3 className="text-2xl font-black text-white mb-3 tracking-tight text-center px-6 leading-relaxed max-w-md">{message}</h3>
+          <div className="flex gap-1.5">
+             <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 1 }} className="w-2.5 h-2.5 bg-amber-500 rounded-full" />
+             <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 1, delay: 0.1 }} className="w-2.5 h-2.5 bg-amber-500 rounded-full" />
+             <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-2.5 h-2.5 bg-amber-500 rounded-full" />
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
@@ -278,9 +299,8 @@ export default function App() {
       setProjectData(data);
       setStep(2);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) { 
-        console.error(e);
-        setError("متأسفانه خطایی در تولید استراتژی رخ داد. لطفاً دوباره تلاش کنید."); 
+    } catch (e: any) { 
+        setError(e.message || "متأسفانه خطایی در تولید استراتژی رخ داد. لطفاً دوباره تلاش کنید."); 
     }
     finally { setLoading(false); }
   };
@@ -297,9 +317,8 @@ export default function App() {
             [field === 'script' ? 'script' : (field === 'caption' ? 'caption' : 'audioScript')]: improved
         }) : null);
         showToast("متن با موفقیت بهینه شد.", 'success');
-    } catch (e) {
-        console.error(e);
-        showToast("خطا در بهینه‌سازی متن. لطفاً دوباره تلاش کنید.", 'error');
+    } catch (e: any) {
+        showToast(e.message || "خطا در بهینه‌سازی متن. لطفاً دوباره تلاش کنید.", 'error');
     } finally { setRefineLoading(prev => ({...prev, [field]: false})); }
   };
 
@@ -376,9 +395,21 @@ export default function App() {
         
         {/* STEP 1: CONFIGURATION (COMMAND CENTER) */}
         {step === 1 && (
-          <div className="space-y-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="space-y-16"
+          >
             <div className="text-center space-y-6">
-                <h2 className="text-5xl lg:text-7xl font-black text-white leading-tight">استودیو <span className="text-amber-500">فوق هوشمند</span> محتوا</h2>
+                <motion.h2 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.2, duration: 0.8 }}
+                  className="text-5xl lg:text-7xl font-black text-white leading-tight"
+                >
+                  استودیو <span className="text-amber-500">فوق هوشمند</span> محتوا
+                </motion.h2>
                 <p className="text-teal-200/40 text-xl max-w-3xl mx-auto font-medium leading-relaxed">یک موضوع بدهید، تمام دارایی‌های محتوایی (سناریو، تصویر، صدا، ویدیو و اینفوگرافی) را در چند ثانیه تحویل بگیرید.</p>
             </div>
 
@@ -510,12 +541,17 @@ export default function App() {
                  </div>
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* STEP 2: REVIEW & EDIT */}
         {step === 2 && projectData && (
-          <div className="space-y-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="space-y-16"
+          >
             <div className="flex flex-col md:flex-row items-center justify-between bg-[#051a1d]/90 p-8 lg:p-10 rounded-[3.5rem] border border-white/5 backdrop-blur-2xl sticky top-28 z-40 shadow-2xl">
               <div className="mb-6 md:mb-0 text-center md:text-right">
                 <h2 className="text-3xl font-black text-white">میز تدوین نهایی</h2>
@@ -529,16 +565,16 @@ export default function App() {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
               <div className="lg:col-span-7 space-y-10">
-                <EditableArea label="سناریوی ویدیویی" icon="📄" value={projectData.script} onChange={v => setProjectData({...projectData, script: v})} onRefine={() => handleRefine('script')} refineLoading={refineLoading['script']} rows={20} />
+                <EditableArea label="سناریوی ویدیویی" icon="📄" value={projectData.script} onChange={(v: any) => setProjectData({...projectData, script: v})} onRefine={() => handleRefine('script')} refineLoading={refineLoading['script']} rows={20} />
                 <div className="bg-[#051a1d]/40 border border-white/5 rounded-[2.5rem] p-8">
                     <SectionHeading title="پرامپت‌های مهندسی شده" icon="🤖" color="teal" sub="Technical Output" />
                     <div className="space-y-6">
-                        <EditableArea label="پرامپت ویدیو (English)" icon="🎬" value={projectData.videoPrompt} onChange={v => setProjectData({...projectData, videoPrompt: v})} rows={4} />
+                        <EditableArea label="پرامپت ویدیو (English)" icon="🎬" value={projectData.videoPrompt} onChange={(v: any) => setProjectData({...projectData, videoPrompt: v})} rows={4} />
                         {projectData.imagePrompts && projectData.imagePrompts.length > 0 && (
                             <div className="space-y-4 pt-4 border-t border-white/5">
                                 <p className="text-[10px] font-black text-teal-500 uppercase tracking-widest">Storyboarding Sequences</p>
                                 <div className="grid grid-cols-1 gap-3">
-                                    {projectData.imagePrompts.map((p, idx) => (
+                                    {projectData.imagePrompts.map((p: any, idx: number) => (
                                         <div key={idx} className="bg-black/20 p-4 rounded-2xl border border-white/5 text-[10px] text-slate-400 font-mono">{p}</div>
                                     ))}
                                 </div>
@@ -548,25 +584,40 @@ export default function App() {
                 </div>
               </div>
               <div className="lg:col-span-5 space-y-10">
-                  <EditableArea label="کپشن شبکه‌های اجتماعی" icon="🏷️" value={projectData.caption} onChange={v => setProjectData({...projectData, caption: v})} onRefine={() => handleRefine('caption')} refineLoading={refineLoading['caption']} rows={8} />
-                  <EditableArea label="متن نریشن صوتی" icon="🎙️" value={projectData.audioScript} onChange={v => setProjectData({...projectData, audioScript: v})} onRefine={() => handleRefine('audio')} refineLoading={refineLoading['audio']} rows={10} />
+                  <EditableArea label="کپشن شبکه‌های اجتماعی" icon="🏷️" value={projectData.caption} onChange={(v: any) => setProjectData({...projectData, caption: v})} onRefine={() => handleRefine('caption')} refineLoading={refineLoading['caption']} rows={8} />
+                  <EditableArea label="متن نریشن صوتی" icon="🎙️" value={projectData.audioScript} onChange={(v: any) => setProjectData({...projectData, audioScript: v})} onRefine={() => handleRefine('audio')} refineLoading={refineLoading['audio']} rows={10} />
                   {prefs.needsInfographic && (
-                      <FlowchartEditor data={projectData.infographicContent} onChange={v => setProjectData({...projectData, infographicContent: v})} />
+                      <FlowchartEditor data={projectData.infographicContent} onChange={(v: any) => setProjectData({...projectData, infographicContent: v})} />
                   )}
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* STEP 3: RESULTS (CONTENT DISTRIBUTION CENTER) */}
         {step === 3 && (
-          <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-20">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="space-y-20"
+          >
             <div className="text-center space-y-6">
-                <div className="inline-flex items-center gap-2 px-6 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-xs font-black uppercase tracking-[0.2em] mb-4">
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="inline-flex items-center gap-2 px-6 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-xs font-black uppercase tracking-[0.2em] mb-4"
+                >
                     <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
                     Ready for Distribution
-                </div>
-                <h2 className="text-5xl lg:text-8xl font-black text-white leading-tight">پروژه <span className="text-amber-500">طلایی</span> شما</h2>
+                </motion.div>
+                <motion.h2 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-5xl lg:text-8xl font-black text-white leading-tight"
+                >پروژه <span className="text-amber-500">طلایی</span> شما</motion.h2>
                 <div className="flex flex-wrap justify-center gap-6 pt-4">
                     <ActionButton onClick={() => setStep(2)} variant="secondary" label="بازگشت به میز تدوین" icon={<span className="text-lg">←</span>} />
                     <ActionButton onClick={handleNewProject} variant="primary" label="پروژه جدید +" className="px-10" />
@@ -749,7 +800,7 @@ export default function App() {
                     </div>
                 </div>
             </div>
-          </div>
+          </motion.div>
         )}
       </main>
 

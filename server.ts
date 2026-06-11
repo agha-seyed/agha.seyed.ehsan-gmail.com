@@ -23,6 +23,10 @@ async function startServer() {
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
 
+  app.get("/api/test-key", (req, res) => {
+    res.json({ key: process.env.GEMINI_API_KEY ? "HAS_KEY" : "NO_KEY", length: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0 });
+  });
+
   // --- Search Grounded Plan Generation ---
   app.post("/api/plan", async (req, res) => {
     try {
@@ -75,10 +79,13 @@ async function startServer() {
           responseSchema: responseSchema,
         },
       });
-      res.json(JSON.parse(response.text || "{}"));
+      const text = response.text || "{}";
+      const match = text.match(/```json([\s\S]*?)```/i);
+      const cleaned = match ? match[1].trim() : text.trim();
+      res.json(JSON.parse(cleaned));
     } catch (e: any) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      // console.error(e);
+      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED")); res.status(isQuota ? 429 : 500).json({ error: e.message });
     }
   });
 
@@ -95,8 +102,8 @@ async function startServer() {
       });
       res.json({ text: response.text?.trim() || text });
     } catch (e: any) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      // console.error(e);
+      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED")); res.status(isQuota ? 429 : 500).json({ error: e.message });
     }
   });
 
@@ -125,8 +132,8 @@ async function startServer() {
         res.status(500).json({ error: "Failed to generate image" });
       }
     } catch (e: any) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      // console.error(e);
+      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED")); res.status(isQuota ? 429 : 500).json({ error: e.message });
     }
   });
 
@@ -145,8 +152,8 @@ async function startServer() {
       const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       res.json({ data });
     } catch (e: any) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      // console.error(e);
+      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED")); res.status(isQuota ? 429 : 500).json({ error: e.message });
     }
   });
 
@@ -176,7 +183,7 @@ async function startServer() {
       res.write(`data: ${JSON.stringify({ event: 'done' })}\n\n`);
       res.end();
     } catch (e: any) {
-      console.error(e);
+      // console.error(e);
       res.write(`data: ${JSON.stringify({ event: 'error', message: e.message })}\n\n`);
       res.end();
     }
@@ -193,8 +200,8 @@ async function startServer() {
       });
       res.json({ operationName: operation.name });
     } catch(e: any) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      // console.error(e);
+      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED")); res.status(isQuota ? 429 : 500).json({ error: e.message });
     }
   });
 
@@ -206,7 +213,7 @@ async function startServer() {
       const updated = await ai.operations.getVideosOperation({ operation: op });
       res.json({ done: updated.done });
     } catch(e: any) {
-      res.status(500).json({ error: e.message });
+      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED")); res.status(isQuota ? 429 : 500).json({ error: e.message });
     }
   });
 
@@ -231,8 +238,8 @@ async function startServer() {
         })
       );
     } catch(e: any) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      // console.error(e);
+      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED")); res.status(isQuota ? 429 : 500).json({ error: e.message });
     }
   });
 
@@ -274,7 +281,7 @@ async function startServer() {
       
       clientWs.on('close', () => session.close());
     } catch(e) {
-      console.error("Live API Error:", e);
+      // console.error("Live API Error:", e);
     }
   });
 

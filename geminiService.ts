@@ -84,7 +84,13 @@ export const refineContent = async (text: string, type: 'script' | 'caption' | '
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, type, topic })
   });
-  if (!res.ok) throw new Error("API Error");
+  if (!res.ok) {
+    const errorText = await res.text();
+    if (res.status === 429 || errorText.includes("429") || errorText.includes("RESOURCE_EXHAUSTED")) {
+      throw new Error("سهمیه API (Quota) به پایان رسیده است. لطفاً کلید API را تغییر دهید.");
+    }
+    throw new Error("API Error");
+  }
   return (await res.json()).text || text;
 };
 
@@ -94,7 +100,13 @@ export const generateStrategicPlan = async (prefs: ProjectPreferences) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(prefs)
   });
-  if (!res.ok) throw new Error("Strategy generation failed");
+  if (!res.ok) {
+    const errorText = await res.text();
+    if (res.status === 429 || errorText.includes("429") || errorText.includes("RESOURCE_EXHAUSTED")) {
+      throw new Error("سهمیه API (Quota) به پایان رسیده است. لطفاً کلید API را تغییر دهید.");
+    }
+    throw new Error("Strategy generation failed");
+  }
   return await res.json();
 };
 
