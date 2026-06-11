@@ -338,8 +338,155 @@ export const FlowchartViewer: React.FC<FlowchartViewerProps> = ({ data, onEditRe
 
   const selectedStep = currentData.steps.find(s => s.id === selectedStepId) || currentData.steps[0];
 
+  const [showHtmlCode, setShowHtmlCode] = useState<string | null>(null);
+
   const triggerPrint = () => {
     window.print();
+    alert('اگر افزونه مسدودکننده پنجره فعال است یا در محیط نمایشی هستید، چاپ مستقیم کار نمی‌کند.');
+  };
+
+  const copyTimelineAsText = () => {
+    let output = `📊 ${currentData.title || 'فرآیند تولید محتوا'}\n\n`;
+    currentData.steps.forEach((step, idx) => {
+      output += `[${step.phase}] ${step.title}\n`;
+      if (step.duration) output += `⏱️ زمان یا ارزش: ${step.duration}\n`;
+      output += `📝 شرح اقدامات: ${step.description}\n\n`;
+    });
+    navigator.clipboard.writeText(output);
+    alert('سند فرآیند متنی با موفقیت در حافظه موقت کپی شد!');
+  };
+
+  const downloadInteractiveHTML = () => {
+    const stepsHtml = currentData.steps.map((step, idx) => `
+      <div 
+        id="card-${step.id}"
+        onclick="selectStep('${step.id}')"
+        class="step-card flex items-start gap-4 p-5 rounded-3xl border border-white/5 bg-white/5 hover:bg-white/10 cursor-pointer transition-all duration-300"
+      >
+        <div class="flex-shrink-0 w-12 h-12 bg-black/40 text-emerald-400 text-xl border border-white/5 rounded-xl flex items-center justify-center">
+          ${step.icon || '🎯'}
+        </div>
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <span class="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">${step.phase}</span>
+            ${step.duration ? `<span class="text-[9px] text-slate-500 font-medium">${step.duration}</span>` : ''}
+          </div>
+          <h4 class="font-bold text-slate-200 mt-1 text-sm">${step.title}</h4>
+        </div>
+      </div>
+    `).join('');
+
+    const stepsDataJson = JSON.stringify(currentData.steps);
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${currentData.title || "نمودار فرآیند اختصاصی"}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Vazirmatn', sans-serif; }
+    </style>
+</head>
+<body class="bg-[#020d0f] text-slate-100 min-h-screen p-4 md:p-8">
+    <div class="max-w-6xl mx-auto bg-[#041d20] border border-emerald-500/15 rounded-[2.5rem] p-6 md:p-10 shadow-2xl relative overflow-hidden my-6">
+        <div class="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-80 h-80 bg-amber-500/5 rounded-full blur-[100px] pointer-events-none"></div>
+
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-white/5 mb-8 relative z-10">
+            <div>
+                <span class="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-wider">Logical Flowchart</span>
+                <h1 class="text-2xl md:text-3xl font-black text-white mt-2">${currentData.title}</h1>
+            </div>
+            <button onclick="window.print()" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-teal-950 font-black rounded-xl text-xs shadow-lg transition-all">چاپ مستقیم این صفحه</button>
+        </div>
+
+        <!-- Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
+            <!-- Timeline List -->
+            <div class="lg:col-span-7 space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                ${stepsHtml}
+            </div>
+
+            <!-- Spotlight Pane -->
+            <div class="lg:col-span-5">
+                <div class="bg-gradient-to-b from-[#092e32] to-[#041a1c] border border-emerald-500/20 rounded-[2rem] p-6 space-y-6 shadow-xl relative min-h-[350px]">
+                    <div class="flex justify-between items-center pb-3 border-b border-teal-500/10">
+                        <span class="text-[10px] font-bold text-amber-500">جزییات گام فعال</span>
+                        <span id="spotlight-phase" class="text-[10px] px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/10 rounded-full font-bold"></span>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <div id="spotlight-icon-box" class="w-14 h-14 bg-gradient-to-tr from-amber-500 to-amber-600 text-teal-950 rounded-xl flex items-center justify-center text-3xl shadow-lg"></div>
+                        <div>
+                            <h3 id="spotlight-title" class="text-xl font-black text-white"></h3>
+                            <p id="spotlight-duration" class="text-xs text-slate-400 mt-1"></p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block">شرح تفصیلی عملیات:</span>
+                        <div id="spotlight-description" class="bg-black/40 p-4 rounded-xl border border-white/5 text-xs text-slate-300 leading-relaxed whitespace-pre-wrap"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const steps = ${stepsDataJson};
+        let activeId = steps[0]?.id;
+
+        function selectStep(id) {
+            activeId = id;
+            steps.forEach(s => {
+                const card = document.getElementById('card-' + s.id);
+                if (card) {
+                    if (s.id === id) {
+                        card.classList.add('bg-[#0a2e31]', 'border-emerald-500/40', 'translate-x-2');
+                        card.classList.remove('bg-white/5', 'border-white/5');
+                    } else {
+                        card.classList.remove('bg-[#0a2e31]', 'border-emerald-500/40', 'translate-x-2');
+                        card.classList.add('bg-white/5', 'border-white/5');
+                    }
+                }
+            });
+
+            const step = steps.find(s => s.id === id);
+            if (step) {
+                document.getElementById('spotlight-phase').innerText = step.phase;
+                document.getElementById('spotlight-icon-box').innerText = step.icon || '🎯';
+                document.getElementById('spotlight-title').innerText = step.title;
+                document.getElementById('spotlight-duration').innerHTML = step.duration ? 'زمان تخمینی یا ارزش: <strong>' + step.duration + '</strong>' : '';
+                document.getElementById('spotlight-description').innerText = step.description;
+            }
+        }
+
+        if (steps.length > 0) {
+            selectStep(steps[0].id);
+        }
+    </script>
+</body>
+</html>`;
+
+    // Attempt to download, but also show HTML code block for copying if it fails/blocked
+    try {
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `flowchart-${Date.now()}.html`;
+        link.click();
+        URL.revokeObjectURL(url);
+    } catch(e) {
+        console.error(e);
+    }
+    
+    // Always provide the fallback modal, as click() silently fails in sandboxed iframes
+    setShowHtmlCode(htmlContent);
   };
 
   return (
@@ -349,7 +496,7 @@ export const FlowchartViewer: React.FC<FlowchartViewerProps> = ({ data, onEditRe
       <div className="absolute bottom-0 left-0 w-80 h-80 bg-amber-500/5 rounded-full blur-[100px] pointer-events-none"></div>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 pb-8 border-b border-white/5 relative z-10">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 pb-8 border-b border-white/5 relative z-10 font-[Vazirmatn]">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 bg-gradient-to-tr from-emerald-500/10 to-teal-500/30 text-emerald-400 border border-emerald-500/25 rounded-2xl flex items-center justify-center text-3xl shadow-xl shadow-emerald-950/45 animate-pulse">
             📊
@@ -362,22 +509,34 @@ export const FlowchartViewer: React.FC<FlowchartViewerProps> = ({ data, onEditRe
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto self-stretch sm:self-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto self-stretch sm:self-auto">
           {onEditRequest && (
             <button 
               onClick={onEditRequest}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-bold transition-all"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-bold transition-all"
             >
               <Edit3 size={14} />
               <span>ویرایش فرآیند</span>
             </button>
           )}
           <button 
-            onClick={triggerPrint}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-teal-950 text-xs font-black shadow-lg shadow-amber-500/10 transition-all"
+            onClick={copyTimelineAsText}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/25 text-xs font-bold transition-all"
+          >
+            <span>کپی متن فرآیند</span>
+          </button>
+          <button 
+            onClick={downloadInteractiveHTML}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-teal-950 text-xs font-black shadow-lg shadow-amber-500/10 transition-all"
           >
             <Download size={14} />
-            <span>چاپ عریض یا ذخیره</span>
+            <span>دانلود وب تعاملی</span>
+          </button>
+          <button 
+            onClick={triggerPrint}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-xs font-bold transition-all"
+          >
+            <span>پرینت عریض</span>
           </button>
         </div>
       </div>
@@ -540,6 +699,36 @@ export const FlowchartViewer: React.FC<FlowchartViewerProps> = ({ data, onEditRe
           <span className="text-[9px] font-bold bg-white/5 border border-white/10 px-3 py-1.5 rounded-full text-slate-400">۳. تدوین نهایی و تست</span>
         </div>
       </div>
+
+      {showHtmlCode && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#041a1c] border border-white/10 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 fade-in duration-300">
+                <div className="flex justify-between items-center p-4 sm:p-6 border-b border-white/5 bg-black/40">
+                    <div>
+                        <h3 className="font-bold text-white text-lg">کد فایل اینفوگرافیک</h3>
+                        <p className="text-xs text-slate-400 mt-1">پیش‌نمایش امنیتی ممکن است مانع دانلود شود. می‌توانید این کد HTML را کپی کرده و در یک فایل متنی با پسوند `.html` ذخیره کنید.</p>
+                    </div>
+                    <button onClick={() => setShowHtmlCode(null)} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-colors">✕</button>
+                </div>
+                <div className="p-4 sm:p-6 bg-black/60 relative">
+                    <textarea 
+                        readOnly 
+                        value={showHtmlCode} 
+                        className="w-full h-64 sm:h-80 bg-[#020a0b] text-teal-400 text-xs font-mono p-4 border border-white/5 rounded-xl outline-none resize-none"
+                    />
+                </div>
+                <div className="p-4 sm:p-6 border-t border-white/5 bg-black/40 flex justify-end gap-3">
+                    <button onClick={() => setShowHtmlCode(null)} className="px-5 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors">بستن</button>
+                    <button 
+                        onClick={() => { navigator.clipboard.writeText(showHtmlCode); alert('کد HTML کپی شد!'); }} 
+                        className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-500 text-teal-950 hover:bg-amber-400 transition-colors flex items-center gap-2"
+                    >
+                        <span>کپی کد کامل صفحه HTML</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

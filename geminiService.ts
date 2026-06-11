@@ -1,23 +1,21 @@
 
-import { GoogleGenAI, Type, Modality, Schema, GenerateContentResponse } from "@google/genai";
 import { ProjectPreferences } from "./types";
 
-// --- Audio Helper Functions ---
-const decodeBase64 = (base64: string) => {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
+export const STOCK_VIDEOS: {[key: string]: string} = {
+  tech: "https://assets.mixkit.co/videos/preview/mixkit-cyber-security-system-concept-with-binary-codes-43431-large.mp4",
+  business: "https://assets.mixkit.co/videos/preview/mixkit-hand-of-a-businessman-working-on-a-laptop-42173-large.mp4",
+  finance: "https://assets.mixkit.co/videos/preview/mixkit-glowing-digital-graph-representing-growth-42861-large.mp4",
+  education: "https://assets.mixkit.co/videos/preview/mixkit-scientist-looking-at-samples-in-a-lab-41643-large.mp4",
+  nature: "https://assets.mixkit.co/videos/preview/mixkit-top-view-of-ocean-waves-loop-41655-large.mp4",
+  health: "https://assets.mixkit.co/videos/preview/mixkit-abstract-movement-of-fluid-colors-31718-large.mp4",
+  art: "https://assets.mixkit.co/videos/preview/mixkit-glowing-neon-fluid-abstract-background-42354-large.mp4",
+  space: "https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-background-1611-large.mp4"
 };
 
 const chunkText = (text: string, maxLength: number = 400): string[] => {
   const chunks: string[] = [];
   let currentChunk = "";
   const sentences = text.split(/([.?!،؛])/); 
-
   for (const part of sentences) {
     if (currentChunk.length + part.length > maxLength) {
       if (currentChunk.trim()) chunks.push(currentChunk.trim());
@@ -28,6 +26,16 @@ const chunkText = (text: string, maxLength: number = 400): string[] => {
   }
   if (currentChunk.trim()) chunks.push(currentChunk.trim());
   return chunks;
+};
+
+const decodeBase64 = (base64: string) => {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
 };
 
 const stitchAudioAndCreateWav = (pcmChunks: Uint8Array[], sampleRate: number = 24000) => {
@@ -44,7 +52,7 @@ const stitchAudioAndCreateWav = (pcmChunks: Uint8Array[], sampleRate: number = 2
   const view = new DataView(buffer);
   const writeString = (offset: number, string: string) => {
     for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i));
+        view.setUint8(offset + i, string.charCodeAt(i));
     }
   };
   
@@ -68,105 +76,39 @@ const stitchAudioAndCreateWav = (pcmChunks: Uint8Array[], sampleRate: number = 2
   return new Blob([buffer], { type: 'audio/wav' });
 };
 
-// --- Content Refinement ---
+// --- API Calls ---
+
 export const refineContent = async (text: string, type: 'script' | 'caption' | 'audio', topic: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  const prompt = `Topic: ${topic}. Original ${type}: "${text}". \n Please rewrite and improve this ${type} to be more engaging and viral for social media in Persian. Only return the improved text, no explanations. Use Google Search for current context.`;
-  
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        tools: [{googleSearch: {}}],
-      }
-    });
-    return response.text?.trim() || text;
-  } catch (e) {
-    console.error("Refinement error:", e);
-    return text;
-  }
+  const res = await fetch('/api/refine', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, type, topic })
+  });
+  if (!res.ok) throw new Error("API Error");
+  return (await res.json()).text || text;
 };
 
-// --- Strategic Plan Generation ---
 export const generateStrategicPlan = async (prefs: ProjectPreferences) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
-  const responseSchema: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      script: { type: Type.STRING },
-      audioScript: { type: Type.STRING },
-      caption: { type: Type.STRING },
-      hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
-      imagePrompts: { type: Type.ARRAY, items: { type: Type.STRING } },
-      videoPrompt: { type: Type.STRING },
-      musicPrompt: { type: Type.STRING },
-      infographicPrompt: { type: Type.STRING },
-      infographicContent: {
-        type: Type.OBJECT,
-        description: "A step-by-step flowchart representing the exact production/ideation logical phases of the content topic.",
-        properties: {
-          title: { type: Type.STRING, description: "Flowchart main topic title in Persian (e.g. نقشه راه ۵ مرحله‌ای آموزش...)" },
-          steps: {
-            type: Type.ARRAY,
-            description: "Sequence of steps in logical order",
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                phase: { type: Type.STRING, description: "e.g. مرحله ۱, گام دوم" },
-                title: { type: Type.STRING, description: "Main short title of the step in Persian" },
-                description: { type: Type.STRING, description: "Step description explaining details or action in Persian" },
-                duration: { type: Type.STRING, description: "Estimated time or effort, e.g. ۵ دقیقه, ۱ ساعت" },
-                icon: { type: Type.STRING, description: "An emoji matching this step's theme" }
-              },
-              required: ["id", "phase", "title", "description", "icon"]
-            }
-          }
-        },
-        required: ["title", "steps"]
-      },
-    },
-    required: ["script", "audioScript", "caption", "hashtags", "imagePrompts", "videoPrompt", "musicPrompt"],
-  };
-
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Search Google for the latest news and trends about "${prefs.topic}". Then generate a complete production strategy for this topic. Audience: ${prefs.targetAudience}. Needs ${prefs.imageCount} image prompts. Also generate a logical step-by-step flowchart under infographicContent that details how to produce content or how ideas relate for this topic.`,
-      config: {
-        tools: [{googleSearch: {}}],
-        systemInstruction: "You are a professional creative director and news analyst. Use Google Search to find current data and trends. Generate a comprehensive social media content plan in Persian (except for technical prompts which must be in English). Output MUST be valid JSON conforming to responseSchema.",
-        responseMimeType: "application/json",
-        responseSchema,
-      },
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => chunk.web).filter(Boolean) || [];
-
-    return {
-      script: parsed.script,
-      audioScript: parsed.audioScript,
-      caption: parsed.caption,
-      hashtags: parsed.hashtags || [],
-      imagePrompts: parsed.imagePrompts || [],
-      videoPrompt: parsed.videoPrompt,
-      musicPrompt: parsed.musicPrompt,
-      infographicPrompt: parsed.infographicPrompt || "",
-      infographicContent: parsed.infographicContent || { title: "", steps: [] },
-      sources: sources
-    };
-  } catch (e) {
-    console.error("Plan generation error:", e);
-    throw new Error("Failed to generate strategy.");
-  }
+  const res = await fetch('/api/plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(prefs)
+  });
+  if (!res.ok) throw new Error("Strategy generation failed");
+  return await res.json();
 };
 
-// --- Media Assets Generation ---
+export const generateImageContent = async (prompt: string, aspectRatio: string) => {
+  const res = await fetch('/api/generate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, aspectRatio, mode: 'create' })
+  });
+  if (!res.ok) throw new Error("Image Gen failed");
+  return (await res.json()).data;
+};
+
 export const generateMediaAssets = async (editableData: any, prefs: ProjectPreferences) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const results = {
     audioUrl: undefined as string | undefined,
     videoUrl: undefined as string | undefined,
@@ -176,6 +118,8 @@ export const generateMediaAssets = async (editableData: any, prefs: ProjectPrefe
     videoStatus: 'idle' as any,
     imageStatus: 'idle' as any,
     infographicStatus: 'idle' as any,
+    musicStatus: 'idle' as any,
+    musicUrl: undefined as string | undefined,
   };
 
   const promises = [];
@@ -187,16 +131,15 @@ export const generateMediaAssets = async (editableData: any, prefs: ProjectPrefe
         const chunks = chunkText(editableData.audioScript);
         const pcmChunks: Uint8Array[] = [];
         for (const chunk of chunks) {
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: chunk }] }],
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
-                }
+            const res = await fetch('/api/tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: chunk, voiceName })
             });
-            const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-            if (data) pcmChunks.push(decodeBase64(data));
+            if (res.ok) {
+               const { data } = await res.json();
+               if (data) pcmChunks.push(decodeBase64(data));
+            }
         }
         if (pcmChunks.length > 0) {
             results.audioUrl = URL.createObjectURL(stitchAudioAndCreateWav(pcmChunks));
@@ -212,64 +155,131 @@ export const generateMediaAssets = async (editableData: any, prefs: ProjectPrefe
         const aspectRatio = prefs.platform === 'YouTube' ? '16:9' : (prefs.platform === 'Instagram' ? '1:1' : '9:16');
         const prompts = editableData.imagePrompts.slice(0, prefs.imageCount);
         for (const p of prompts) {
-            const res = await ai.models.generateContent({
-                model: 'gemini-3-pro-image-preview',
-                contents: { parts: [{ text: `${p}, high definition, cinematic lighting, ${prefs.imageStyle} style` }] },
-                config: { imageConfig: { aspectRatio: aspectRatio as any } }
-            });
-            const imagePart = res.candidates?.[0]?.content.parts.find(part => part.inlineData);
-            if (imagePart?.inlineData) {
-                results.images.push(`data:image/png;base64,${imagePart.inlineData.data}`);
-            }
+            try {
+              const imgData = await generateImageContent(p + `, ${prefs.imageStyle} style cinematic lighting`, aspectRatio);
+              if (imgData) results.images.push(imgData);
+            } catch(e) {}
         }
         results.imageStatus = results.images.length > 0 ? 'success' : 'error';
       } catch (e) { results.imageStatus = 'error'; }
     })());
   }
 
-  if (prefs.needsVideo && editableData.videoPrompt) {
+  if (prefs.needsVideo) {
     promises.push((async () => {
+      if (prefs.videoEngine === 'stock') {
+        const category = editableData.videoCategory || 'tech';
+        results.videoUrl = STOCK_VIDEOS[category] || STOCK_VIDEOS.tech;
+        results.videoStatus = 'success';
+        return;
+      }
       try {
         const ar = prefs.platform === 'YouTube' ? '16:9' : '9:16'; 
-        let op = await ai.models.generateVideos({
-          model: 'veo-3.1-fast-generate-preview',
-          prompt: editableData.videoPrompt,
-          config: { resolution: '720p', aspectRatio: ar as any }
+        const resStart = await fetch('/api/generate-video', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ prompt: editableData.videoPrompt, aspectRatio: ar })
         });
-        while (!op.done) {
+        if (!resStart.ok) throw new Error("Video fail");
+        const { operationName } = await resStart.json();
+
+        let done = false;
+        while (!done) {
           await new Promise(r => setTimeout(r, 10000));
-          op = await ai.operations.getVideosOperation({ operation: op });
+          const resPoll = await fetch('/api/video-status', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ operationName })
+          });
+          done = (await resPoll.json()).done;
         }
-        if (op.response?.generatedVideos?.[0]?.video?.uri) {
-             const res = await fetch(`${op.response.generatedVideos[0].video.uri}&key=${process.env.API_KEY}`);
-             results.videoUrl = URL.createObjectURL(await res.blob());
-             results.videoStatus = 'success';
-        } else { results.videoStatus = 'error'; }
-      } catch (e) { results.videoStatus = 'error'; }
+
+        const resDownload = await fetch('/api/video-download', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ operationName })
+        });
+        if (resDownload.ok) {
+           const blob = await resDownload.blob();
+           results.videoUrl = URL.createObjectURL(blob);
+           results.videoStatus = 'success';
+        } else {
+           throw new Error("Download fail");
+        }
+      } catch (e) {
+        // Fallback to stock 
+        const category = editableData.videoCategory || 'tech';
+        results.videoUrl = STOCK_VIDEOS[category] || STOCK_VIDEOS.tech;
+        results.videoStatus = 'success';
+      }
     })());
   }
 
   if (prefs.needsInfographic && (editableData.infographicPrompt || editableData.infographicContent)) {
     promises.push((async () => {
-        try {
-            const contentString = typeof editableData.infographicContent === 'string'
-              ? editableData.infographicContent
-              : `Title: ${editableData.infographicContent?.title}. Steps: ${editableData.infographicContent?.steps?.map((s: any) => `${s.phase}: ${s.title} - ${s.description}`).join(' | ')}`;
+      try {
+        const contentString = typeof editableData.infographicContent === 'string'
+          ? editableData.infographicContent
+          : `Title: ${editableData.infographicContent?.title}. Steps: ${editableData.infographicContent?.steps?.map((s: any) => `${s.phase}: ${s.title} - ${s.description}`).join(' | ')}`;
+        const url = await generateImageContent(`Professional vector-style infographic for topic: ${prefs.topic}. Style: Clean, Modern, Corporate. Layout: Steps or Flowchart. Content notes: ${contentString}`, "9:16");
+        results.infographicUrl = url;
+        results.infographicStatus = 'success';
+      } catch (e) { results.infographicStatus = 'error'; }
+    })());
+  }
 
-            const res = await ai.models.generateContent({
-                model: 'gemini-3-pro-image-preview',
-                contents: { parts: [{ text: `Professional vector-style infographic for topic: ${prefs.topic}. Style: Clean, Modern, Corporate. Layout: Steps or Flowchart. Content notes: ${contentString}` }] },
-                config: { imageConfig: { aspectRatio: '9:16' } }
-            });
-            const part = res.candidates?.[0]?.content.parts.find(p => p.inlineData);
-            if (part?.inlineData) {
-                results.infographicUrl = `data:image/png;base64,${part.inlineData.data}`;
-                results.infographicStatus = 'success';
+  if (prefs.needsBackgroundMusic && editableData.musicPrompt) {
+    promises.push((async () => {
+      try {
+        const res = await fetch('/api/generate-music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: editableData.musicPrompt })
+        });
+        if (!res.body) throw new Error("No body");
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let done = false;
+        let audioBase64 = "";
+
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+          if (value) {
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\\n\\n').filter(Boolean);
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const parsed = JSON.parse(line.slice(6));
+                if (parsed.event === 'audio') {
+                  audioBase64 += parsed.data;
+                } else if (parsed.event === 'done') {
+                  done = true;
+                }
+              }
             }
-        } catch (e) { results.infographicStatus = 'error'; }
+          }
+        }
+        
+        if (audioBase64) {
+          const binary = atob(audioBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'audio/wav' });
+          results.musicUrl = URL.createObjectURL(blob);
+          results.musicStatus = 'success';
+        } else {
+          results.musicStatus = 'error';
+        }
+      } catch (e) {
+        results.musicStatus = 'error';
+      }
     })());
   }
 
   await Promise.all(promises);
   return results;
 };
+

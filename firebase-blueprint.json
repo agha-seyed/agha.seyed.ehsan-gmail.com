@@ -1,0 +1,24 @@
+{
+  "collections": [
+    {
+      "name": "projects",
+      "description": "Stores user generated content projects",
+      "securityRules": {
+        "read": "User can only read their own projects",
+        "create": "User must be authenticated and assign their own userId",
+        "update": "No updates allowed currently",
+        "delete": "User can only delete their own projects"
+      },
+      "schema": {
+        "userId": "string",
+        "topic": "string",
+        "projectData": "map",
+        "createdAt": "timestamp"
+      }
+    }
+  ],
+  "auth": {
+    "enabled": true,
+    "providers": ["google.com"]
+  }
+}

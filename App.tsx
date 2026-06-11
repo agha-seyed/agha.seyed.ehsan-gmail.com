@@ -3,6 +3,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import { generateStrategicPlan, generateMediaAssets, refineContent } from './geminiService';
 import { ProjectPreferences, ContentProject } from './types';
 import { FlowchartEditor, FlowchartViewer } from './FlowchartStudio';
+import VoiceAssistant from './src/VoiceAssistant';
+import { auth, db } from './src/firebase';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { collection, addDoc, getDocs, doc, setDoc, query, where, serverTimestamp } from 'firebase/firestore';
+
+// --- Error Handler Helper for Rules ---
+enum OperationType { CREATE='create', UPDATE='update', DELETE='delete', LIST='list', GET='get', WRITE='write' };
+interface FirestoreErrorInfo { error: string; operationType: OperationType; path: string | null; authInfo: any; }
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: { userId: auth.currentUser?.uid },
+    operationType, path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 
 // --- UI Components ---
 
@@ -183,10 +201,46 @@ export default function App() {
   const [prefs, setPrefs] = useState<ProjectPreferences>({
     topic: '', targetAudience: '', platform: 'Instagram', needsScript: true, needsCaption: true, needsAudio: true, needsBackgroundMusic: false, audioGender: 'Male', audioTone: 'Energetic',
     needsImage: true, imageCount: 4, imageStyle: 'Cinematic', customImageDescription: '', needsInfographic: false, infographicLanguage: 'Persian',
-    needsVideo: true, videoStyle: 'Cinematic', videoDuration: 'Short (15s)'
+    needsVideo: true, videoEngine: 'stock', videoStyle: 'Cinematic', videoDuration: 'Short (15s)'
   });
   const [projectData, setProjectData] = useState<any>(null);
   const [assets, setAssets] = useState<ContentProject['assets']>({ images: [], videoStatus: 'idle', audioStatus: 'idle', imageStatus: 'idle', infographicStatus: 'idle' });
+  const [infographicTab, setInfographicTab] = useState<'interactive' | 'poster'>('interactive');
+
+  const [toast, setToast] = useState<{ text: string, type: 'success' | 'warning' | 'error' } | null>(null);
+
+  const showToast = (text: string, type: 'success' | 'warning' | 'error' = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
+  }, []);
+
+  const login = async () => {
+    try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+    catch (e) { showToast('Login failed', 'error'); }
+  };
+  
+  const saveProject = async () => {
+    if (!user) return showToast('ابتدا وارد شوید', 'error');
+    if (!projectData) return;
+    try {
+      const docRef = await addDoc(collection(db, "projects"), {
+        userId: user.uid,
+        topic: prefs.topic,
+        projectData,
+        createdAt: serverTimestamp()
+      });
+      showToast('پروژه ذخیره شد', 'success');
+    } catch(e) {
+      handleFirestoreError(e, OperationType.CREATE, 'projects');
+    }
+  };
 
   useEffect(() => {
     // @ts-ignore
@@ -209,16 +263,25 @@ export default function App() {
   };
 
   const handleGenerateStrategy = async () => {
-    if (!prefs.topic) return setError("لطفاً موضوع محتوا را مشخص کنید.");
+    if (!prefs.topic) {
+        showToast("لطفاً موضوع محتوا را مشخص کنید.", 'warning');
+        return;
+    }
     setLoading(true);
     setLoadingMsg("تیم خلاقیت ما در حال ایده‌پردازی و تدوین استراتژی برای موضوع شماست...");
     setError(null);
     try {
       const data = await generateStrategicPlan(prefs);
+      if (!data || !data.topic) {
+        throw new Error("داده‌های دریافت شده معتبر نیستند.");
+      }
       setProjectData(data);
       setStep(2);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) { setError("متأسفانه خطایی در تولید استراتژی رخ داد. لطفاً دوباره تلاش کنید."); }
+    } catch (e) { 
+        console.error(e);
+        setError("متأسفانه خطایی در تولید استراتژی رخ داد. لطفاً دوباره تلاش کنید."); 
+    }
     finally { setLoading(false); }
   };
 
@@ -228,15 +291,20 @@ export default function App() {
     try {
         const currentText = field === 'script' ? projectData.script : (field === 'caption' ? projectData.caption : projectData.audioScript);
         const improved = await refineContent(currentText, field, prefs.topic);
+        if (!improved) throw new Error("محتوای بهینه‌شده خالی است.");
         setProjectData(prev => prev ? ({
             ...prev,
             [field === 'script' ? 'script' : (field === 'caption' ? 'caption' : 'audioScript')]: improved
         }) : null);
-    } catch (e) {} finally { setRefineLoading(prev => ({...prev, [field]: false})); }
+        showToast("متن با موفقیت بهینه شد.", 'success');
+    } catch (e) {
+        console.error(e);
+        showToast("خطا در بهینه‌سازی متن. لطفاً دوباره تلاش کنید.", 'error');
+    } finally { setRefineLoading(prev => ({...prev, [field]: false})); }
   };
 
   const handleStartProduction = async () => {
-    if (prefs.needsVideo && !hasKey) {
+    if (prefs.needsVideo && prefs.videoEngine === 'veo' && !hasKey) {
         // @ts-ignore
         if (window.aistudio) await window.aistudio.openSelectKey();
         return;
@@ -256,15 +324,52 @@ export default function App() {
     <div className="min-h-screen bg-[#020d0f] text-slate-100 font-['Vazirmatn'] selection:bg-amber-500/20" dir="rtl">
       <LoadingOverlay visible={loading} message={loadingMsg} />
       
-      <nav className="fixed top-0 w-full z-50 bg-[#020d0f]/80 backdrop-blur-xl border-b border-white/5 h-24 flex items-center justify-between px-6 sm:px-12">
-        <div className="flex items-center gap-5 cursor-pointer group" onClick={handleGoHome}>
-          <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center font-black text-teal-950 text-xl shadow-xl shadow-amber-500/10 group-hover:scale-105 transition-transform">G</div>
-          <div className="hidden sm:block">
+      <nav className="fixed top-0 w-full z-50 bg-[#020d0f]/80 backdrop-blur-xl border-b border-white/5 h-20 sm:h-24 flex items-center justify-between px-4 sm:px-12 font-[Vazirmatn]">
+        <div className="flex items-center gap-4 sm:gap-5 cursor-pointer group" onClick={handleGoHome}>
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl sm:rounded-2xl flex items-center justify-center font-black text-teal-950 text-lg sm:text-xl shadow-xl shadow-amber-500/10 group-hover:scale-105 transition-transform">G</div>
+          <div className="hidden md:block">
             <h1 className="text-xl font-black text-white tracking-tight uppercase">Genius Studio</h1>
             <p className="text-[10px] text-teal-400 font-bold uppercase tracking-widest">AI Content Hub</p>
           </div>
         </div>
-        {step > 1 && <ActionButton onClick={handleNewProject} variant="primary" label="پروژه جدید" icon={<span className="text-lg">+</span>} />}
+
+        {/* Stepper Navigation */}
+        <div className="flex items-center gap-2 sm:gap-6 bg-white/5 px-4 sm:px-6 py-2 rounded-2xl border border-white/5">
+          <div className={`flex items-center gap-2 ${step >= 1 ? 'text-amber-400' : 'text-slate-500'}`}>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${step >= 1 ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-white/5'}`}>1</div>
+            <span className="text-[10px] font-bold hidden sm:block">تنظیمات</span>
+          </div>
+          <div className={`w-4 h-0.5 ${step >= 2 ? 'bg-amber-500/50' : 'bg-white/10'}`} />
+          <div className={`flex items-center gap-2 ${step >= 2 ? 'text-amber-400' : 'text-slate-500'}`}>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${step >= 2 ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-white/5'}`}>2</div>
+            <span className="text-[10px] font-bold hidden sm:block">استراتژی</span>
+          </div>
+          <div className={`w-4 h-0.5 ${step >= 3 ? 'bg-amber-500/50' : 'bg-white/10'}`} />
+          <div className={`flex items-center gap-2 ${step >= 3 ? 'text-amber-400' : 'text-slate-500'}`}>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${step >= 3 ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-white/5'}`}>3</div>
+            <span className="text-[10px] font-bold hidden sm:block">خروجی</span>
+          </div>
+        </div>
+
+        {step > 1 ? (
+          <div className="flex items-center gap-3">
+            <button onClick={saveProject} className="hidden sm:flex items-center gap-2 bg-indigo-500/20 text-indigo-400 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl border border-indigo-500/30 font-black text-xs hover:bg-indigo-500/30 transition-colors">
+              <span>ذخیره پروژه</span>
+            </button>
+            <button onClick={handleNewProject} className="flex items-center gap-2 bg-emerald-500 text-emerald-950 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl font-black text-xs hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20">
+              <span className="text-lg">+</span>
+              <span className="hidden sm:inline">پروژه جدید</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+             {user ? (
+               <button onClick={() => signOut(auth)} className="flex items-center gap-2 bg-white/5 text-slate-300 border border-white/10 px-4 py-2 rounded-xl text-xs font-bold hover:bg-white/10">خروج</button>
+             ) : (
+               <button onClick={login} className="flex items-center gap-2 bg-[#4285F4] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#3367D6]">ورود با گوگل</button>
+             )}
+          </div>
+        )}
       </nav>
 
       <main className="relative z-10 pt-36 pb-24 px-4 sm:px-8 max-w-[1400px] mx-auto">
@@ -366,8 +471,15 @@ export default function App() {
                             </div>
                         </ToggleCard>
 
-                        <ToggleCard label="ویدیو (Google Veo)" icon="📹" description="تولید ویدیوی سینمایی کوتاه" checked={prefs.needsVideo} onChange={v => setPrefs({...prefs, needsVideo: v})}>
-                            <div className="space-y-4 pt-2">
+                        <ToggleCard label="فیلم و ویدیوی تیزر" icon="📹" description="تولید تیزر متحرک طبق موضوع انتخابی" checked={prefs.needsVideo} onChange={v => setPrefs({...prefs, needsVideo: v})}>
+                            <div className="space-y-4 pt-2 font-[Vazirmatn]">
+                                <div className="space-y-2">
+                                    <span className="text-[10px] font-bold text-indigo-400 uppercase">موتور پخش ویدیو (فرمت MP4)</span>
+                                    <select value={prefs.videoEngine} onChange={e => setPrefs({...prefs, videoEngine: e.target.value as 'veo' | 'stock'})} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs font-bold text-teal-400 outline-none">
+                                        <option value="stock">تیزرهای ویدیویی رایگان (رایگان، بدون کلید، سینمایی)</option>
+                                        <option value="veo">هوش مصنوعی Google Veo (نیازمند فعال‌سازی کلید پریمیوم)</option>
+                                    </select>
+                                </div>
                                 <div className="space-y-2">
                                     <span className="text-[10px] font-bold text-indigo-400 uppercase">سبک ویدیو</span>
                                     <select value={prefs.videoStyle} onChange={e => setPrefs({...prefs, videoStyle: e.target.value as any})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs font-bold text-white outline-none">
@@ -487,9 +599,70 @@ export default function App() {
                         </div>
                     )}
 
-                    {/* INFOGRAPHIC - Professional Flowchart Display */}
+                    {/* INFOGRAPHIC - Professional Dual Display */}
                     {prefs.needsInfographic && (
-                        <FlowchartViewer data={projectData.infographicContent} onEditRequest={() => setStep(2)} />
+                        <div className="space-y-6">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-white/5 pb-4 gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-emerald-500/10 text-emerald-400 rounded-xl flex items-center justify-center text-xl border border-emerald-500/20">📊</div>
+                                    <h3 className="text-xl font-bold text-white leading-none">مدیریت و نمایش خروجی اینفوگرافیک</h3>
+                                </div>
+                                <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 w-full sm:w-auto">
+                                    <button 
+                                        onClick={() => setInfographicTab('interactive')}
+                                        className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all ${infographicTab === 'interactive' ? 'bg-amber-500 text-teal-950 font-black' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        نقشه راه تعاملی
+                                    </button>
+                                    <button 
+                                        onClick={() => setInfographicTab('poster')}
+                                        className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all ${infographicTab === 'poster' ? 'bg-amber-500 text-teal-950 font-black' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        پوستر گرافیکی هوش مصنوعی
+                                    </button>
+                                </div>
+                            </div>
+
+                            {infographicTab === 'interactive' ? (
+                                <FlowchartViewer data={projectData.infographicContent} onEditRequest={() => setStep(2)} />
+                            ) : (
+                                <div className="bg-[#051a1d]/60 border border-white/5 rounded-[3.5rem] p-8 backdrop-blur-xl relative overflow-hidden flex flex-col items-center justify-center">
+                                    {assets.infographicStatus === 'success' && assets.infographicUrl ? (
+                                        <div className="w-full max-w-lg space-y-6 text-center">
+                                            <div className="border border-white/10 rounded-3xl overflow-hidden shadow-2xl relative group bg-black/30">
+                                                <img referrerPolicy="no-referrer" src={assets.infographicUrl} className="w-full h-auto" alt="AI Generated Infographic Poster" />
+                                                <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-sm">
+                                                    <ActionButton onClick={() => {
+                                                        const link = document.createElement('a');
+                                                        link.href = assets.infographicUrl!;
+                                                        link.download = `infographic-${Date.now()}.png`;
+                                                        link.click();
+                                                    }} variant="success" label="دانلود فایل پوستر" />
+                                                </div>
+                                            </div>
+                                            <ActionButton onClick={() => {
+                                                const link = document.createElement('a');
+                                                link.href = assets.infographicUrl!;
+                                                link.download = `infographic-${Date.now()}.png`;
+                                                link.click();
+                                            }} variant="primary" label="دریافت مسقیم تصویر پوستر (PNG)" className="w-full py-4 rounded-xl font-black" icon="📥" />
+                                        </div>
+                                    ) : (
+                                        <div className="py-20 text-center space-y-6 max-w-md mx-auto">
+                                            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto text-4xl animate-pulse">
+                                                🎨
+                                            </div>
+                                            <h4 className="text-xl font-bold text-white">پوستر اینفوگرافیک هوش مصنوعی</h4>
+                                            <p className="text-xs text-slate-400 leading-relaxed">
+                                                {assets.infographicStatus === 'loading' 
+                                                    ? 'ما در حال تصویرسازی نقشه راه طراحی شده جهت خروجی نهایی پوستر با هوش مصنوعی هستیم...' 
+                                                    : 'تصویر پوستر آماده نشده است یا غیرفعال است.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     {/* IMAGES GALLERY */}
@@ -527,7 +700,7 @@ export default function App() {
                             <div className="bg-black/40 p-6 rounded-[2.5rem] border border-white/5">
                                 <div className="flex justify-between items-center mb-4">
                                     <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">کپشن نهایی</span>
-                                    <ActionButton onClick={() => { navigator.clipboard.writeText(projectData.caption); alert('کپشن کپی شد!'); }} variant="secondary" label="کپی" className="px-3 py-1.5 h-auto text-[10px]" />
+                                    <ActionButton onClick={() => { navigator.clipboard.writeText(projectData.caption); showToast('کپشن کپی شد!', 'success'); }} variant="secondary" label="کپی" className="px-3 py-1.5 h-auto text-[10px]" />
                                 </div>
                                 <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{projectData.caption}</p>
                             </div>
@@ -535,7 +708,7 @@ export default function App() {
                             <div className="bg-black/40 p-6 rounded-[2.5rem] border border-white/5">
                                 <div className="flex justify-between items-center mb-4">
                                     <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">هشتگ‌های پربازدید</span>
-                                    <ActionButton onClick={() => { navigator.clipboard.writeText(projectData.hashtags.join(' ')); alert('هشتگ‌ها کپی شدند!'); }} variant="secondary" label="کپی همه" className="px-3 py-1.5 h-auto text-[10px]" />
+                                    <ActionButton onClick={() => { navigator.clipboard.writeText(projectData.hashtags.join(' ')); showToast('هشتگ‌ها کپی شدند!', 'success'); }} variant="secondary" label="کپی همه" className="px-3 py-1.5 h-auto text-[10px]" />
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     {projectData.hashtags.map((h: string, idx: number) => (
@@ -580,14 +753,33 @@ export default function App() {
         )}
       </main>
 
-      {/* Error Toast */}
-      {error && (
-        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 bg-red-600/90 text-white px-10 py-5 rounded-[2rem] shadow-2xl z-[100] animate-in slide-in-from-bottom-20 flex items-center gap-4 backdrop-blur-xl">
-            <span className="text-xl">⚠️</span>
-            <span className="font-bold">{error}</span>
-            <button onClick={() => setError(null)} className="mr-6 opacity-60 hover:opacity-100 transition-opacity">✕</button>
-        </div>
-      )}
+      {/* Notifications Area */}
+      <div className="fixed bottom-8 sm:bottom-12 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-3 pointer-events-none">
+        {error && (
+            <div className="pointer-events-auto bg-red-950/90 border border-red-500/30 text-red-200 px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom-5 fade-in flex items-center justify-between gap-4 font-bold text-xs sm:text-sm">
+                <div className="flex items-center gap-3">
+                    <span className="text-lg">⚠️</span>
+                    <span>{error}</span>
+                </div>
+                <button onClick={() => setError(null)} className="opacity-50 hover:opacity-100 transition-opacity p-1">✕</button>
+            </div>
+        )}
+
+        {toast && (
+            <div className={`pointer-events-auto px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in font-bold text-xs sm:text-sm
+                ${toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-300' : ''}
+                ${toast.type === 'error' ? 'bg-red-950/90 border-red-500/30 text-red-300' : ''}
+                ${toast.type === 'warning' ? 'bg-amber-950/90 border-amber-500/30 text-amber-300' : ''}
+            `}>
+                {toast.type === 'success' && <span className="text-lg">✅</span>}
+                {toast.type === 'error' && <span className="text-lg">❌</span>}
+                {toast.type === 'warning' && <span className="text-lg">⚠️</span>}
+                <span>{toast.text}</span>
+            </div>
+        )}
+      </div>
+
+      <VoiceAssistant />
     </div>
   );
 }

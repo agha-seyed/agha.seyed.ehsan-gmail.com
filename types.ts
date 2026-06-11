@@ -27,6 +27,7 @@ export interface ProjectPreferences {
   infographicLanguage: 'Persian' | 'English' | 'Italian';
 
   needsVideo: boolean;
+  videoEngine: 'veo' | 'stock';
   videoStyle: 'Cinematic' | 'Vlog' | 'Promo' | 'Drone' | 'Animation';
   videoDuration: 'Short (15s)' | 'Medium (30s)' | 'Long (60s)';
 }
