@@ -1,0 +1,9 @@
+{
+  "name": "Content Genius AI",
+  "description": "An all-in-one AI content studio that generates scenarios, images, audio, and videos for Telegram, Instagram, and YouTube from a single topic.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
