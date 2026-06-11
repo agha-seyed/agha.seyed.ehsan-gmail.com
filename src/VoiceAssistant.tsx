@@ -132,14 +132,18 @@ const VoiceAssistant = () => {
     <div className="fixed bottom-6 right-6 z-[100]">
       <button 
         onClick={toggleRecording}
-        className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-2xl transition-all duration-300 ${isRecording ? 'bg-red-500 animate-pulse scale-110 shadow-red-500/50' : 'bg-emerald-500 hover:scale-110 shadow-emerald-500/30'}`}
+        className={`w-16 h-16 rounded-3xl flex items-center justify-center text-3xl shadow-2xl transition-all duration-300 ${isRecording ? 'bg-red-500 animate-pulse scale-105 shadow-red-500/50' : 'bg-gradient-to-tr from-emerald-500 to-teal-400 hover:scale-110 shadow-emerald-500/30 border border-emerald-400/50'}`}
       >
-        {isRecording ? '🎙️' : '🤖'}
+        {isRecording ? '🔴' : '🤖'}
       </button>
       {isRecording && (
-        <div className="absolute bottom-20 right-0 w-48 bg-black/80 backdrop-blur-md rounded-2xl p-4 border border-white/10 text-center">
-          <p className="text-white text-xs font-bold leading-relaxed">
-             {isConnected ? 'دستیار در حال گوش دادن است... صحبت کنید.' : 'در حال اتصال...'}
+        <div className="absolute bottom-20 right-0 w-56 bg-black/90 backdrop-blur-xl rounded-2xl p-4 border border-red-500/30 text-center shadow-2xl shadow-red-500/10">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+            <span className="text-white text-xs font-black">{isConnected ? 'در حال شنیدن...' : 'ارتباط...'}</span>
+          </div>
+          <p className="text-slate-300 text-[10px] leading-relaxed">
+             با ربات هوشمند مکالمه صوتی کنید. پاسخ‌ها را می‌شنوید.
           </p>
         </div>
       )}

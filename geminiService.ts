@@ -142,15 +142,31 @@ export const generateMediaAssets = async (editableData: any, prefs: ProjectPrefe
         const voiceName = prefs.audioGender === 'Male' ? 'Kore' : 'Puck'; 
         const chunks = chunkText(editableData.audioScript);
         const pcmChunks: Uint8Array[] = [];
-        for (const chunk of chunks) {
-            const res = await fetch('/api/tts', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: chunk, voiceName })
-            });
-            if (res.ok) {
-               const { data } = await res.json();
-               if (data) pcmChunks.push(decodeBase64(data));
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            let retries = 3;
+            let success = false;
+            while(retries > 0 && !success) {
+                const res = await fetch('/api/tts', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text: chunk, voiceName })
+                });
+                if (res.ok) {
+                   const { data } = await res.json();
+                   if (data) {
+                       pcmChunks.push(decodeBase64(data));
+                       success = true;
+                   }
+                } else {
+                   if (res.status === 429) {
+                       await new Promise(r => setTimeout(r, 5000));
+                   }
+                   retries--;
+                }
+            }
+            if (i < chunks.length - 1) {
+                await new Promise(r => setTimeout(r, 1000)); // Delay to avoid strict rate limiting
             }
         }
         if (pcmChunks.length > 0) {
@@ -158,6 +174,58 @@ export const generateMediaAssets = async (editableData: any, prefs: ProjectPrefe
             results.audioStatus = 'success';
         }
       } catch (e) { results.audioStatus = 'error'; }
+    })());
+  }
+
+  if (prefs.needsBackgroundMusic && editableData.musicPrompt) {
+    promises.push((async () => {
+      try {
+        const resStart = await fetch('/api/generate-music', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ prompt: editableData.musicPrompt })
+        });
+        if (!resStart.ok) throw new Error("Music fail");
+        
+        let musicPcmChunks: Uint8Array[] = [];
+        const reader = resStart.body?.getReader();
+        if (reader) {
+          const decoder = new TextDecoder();
+          let done = false;
+          let buffer = "";
+          while (!done) {
+            const { value, done: readDone } = await reader.read();
+            if (value) {
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n\n');
+              buffer = lines.pop() || "";
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.substring(6));
+                    if (data.event === 'audio') {
+                       musicPcmChunks.push(decodeBase64(data.data));
+                    } else if (data.event === 'error') {
+                      throw new Error(data.message);
+                    }
+                  } catch(e) {}
+                }
+              }
+            }
+            if (readDone) done = true;
+          }
+        }
+        
+        if (musicPcmChunks.length > 0 && musicPcmChunks[0].length !== 0) { // check if valid length
+          // For now, Lyria base64 chunks might just be audio/wav data directly, or PCM. 
+          // If it's already an audio file chunked, concatenating might break the headers if it's multiple complete files.
+          // Let's assume it streams PCM exactly like TTS.
+          results.musicUrl = URL.createObjectURL(stitchAudioAndCreateWav(musicPcmChunks));
+          results.musicStatus = 'success';
+        } else {
+          results.musicStatus = 'error';
+        }
+      } catch (e) { results.musicStatus = 'error'; }
     })());
   }
 

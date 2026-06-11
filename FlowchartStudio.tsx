@@ -490,22 +490,23 @@ export const FlowchartViewer: React.FC<FlowchartViewerProps> = ({ data, onEditRe
   };
 
   return (
-    <div className="bg-[#041d20]/90 border border-emerald-500/15 rounded-[3.5rem] p-8 lg:p-12 backdrop-blur-2xl shadow-3xl space-y-12 relative overflow-hidden" id="flowchart-viewer-container">
+    <div className="bg-gradient-to-tr from-[#02181b]/95 via-[#03252a]/95 to-[#01090a]/95 border-2 border-emerald-500/20 rounded-[3.5rem] p-8 lg:p-12 backdrop-blur-3xl shadow-[0_30px_90px_rgba(0,0,0,0.7)] space-y-12 relative overflow-hidden ring-1 ring-white/5" id="flowchart-viewer-container">
       {/* Background ambient light */}
-      <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none"></div>
-      <div className="absolute bottom-0 left-0 w-80 h-80 bg-amber-500/5 rounded-full blur-[100px] pointer-events-none"></div>
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-500/5 via-transparent to-transparent pointer-events-none"></div>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 pb-8 border-b border-white/5 relative z-10 font-[Vazirmatn]">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-tr from-emerald-500/10 to-teal-500/30 text-emerald-400 border border-emerald-500/25 rounded-2xl flex items-center justify-center text-3xl shadow-xl shadow-emerald-950/45 animate-pulse">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 pb-8 border-b border-white/10 relative z-10 font-[Vazirmatn]">
+        <div className="flex items-center gap-5">
+          <div className="w-16 h-16 bg-gradient-to-tr from-emerald-400/20 to-teal-400/40 text-emerald-300 border-2 border-emerald-400/30 rounded-[1.5rem] flex items-center justify-center text-4xl shadow-2xl shadow-emerald-500/20 animate-pulse">
             📊
           </div>
           <div>
-            <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-wider">
-              Logical Flowchart
+            <span className="text-[10px] font-black text-amber-500 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur-sm">
+              Strategic Blueprint
             </span>
-            <h3 className="text-2xl lg:text-3xl font-black text-white mt-1.5">{currentData.title || "لوپ تولید و عرضه محتوا"}</h3>
+            <h3 className="text-3xl lg:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-l from-white to-slate-400 mt-2">{currentData.title || "لوپ تولید و عرضه محتوا"}</h3>
           </div>
         </div>
 
@@ -579,21 +580,22 @@ export const FlowchartViewer: React.FC<FlowchartViewerProps> = ({ data, onEditRe
                   </div>
 
                   {/* Node Content Card */}
-                  <div className={`flex-1 p-6 rounded-[2rem] border transition-all duration-500 relative ${
+                  <div className={`flex-1 p-8 rounded-[2.5rem] border-2 transition-all duration-500 relative overflow-hidden ${
                     isSelected 
-                      ? 'bg-[#0a2e31]/90 border-emerald-500/30 shadow-[0_20px_50px_rgba(0,0,0,0.4)]' 
-                      : 'bg-black/20 border-white/5 hover:border-white/10 hover:bg-black/30'
+                      ? 'bg-gradient-to-br from-[#0c3a3e]/90 to-[#062124]/90 border-emerald-500/40 shadow-[0_20px_60px_rgba(4,24,28,0.8)] ring-1 ring-emerald-500/20' 
+                      : 'bg-black/30 border-white/5 hover:border-emerald-500/20 hover:bg-[#072023]/60'
                   }`}>
-                    <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+                    {isSelected && <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-[40px] pointer-events-none"></div>}
+                    <div className="flex flex-wrap justify-between items-center gap-2 mb-4 relative z-10">
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
-                          isSelected ? 'bg-amber-500/20 text-amber-400' : 'bg-white/5 text-slate-500'
+                        <span className={`text-[11px] font-black uppercase px-3 py-1.5 rounded-full ${
+                          isSelected ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-white/5 text-slate-400 border border-white/5'
                         }`}>
                           {step.phase}
                         </span>
                         {step.duration && (
-                          <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1 bg-black/30 px-2 py-0.5 rounded-md">
-                            <Clock size={10} />
+                          <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 bg-black/40 px-3 py-1 rounded-lg border border-white/5">
+                            <Clock size={12} className="text-teal-500" />
                             {step.duration}
                           </span>
                         )}
@@ -604,13 +606,13 @@ export const FlowchartViewer: React.FC<FlowchartViewerProps> = ({ data, onEditRe
                       )}
                     </div>
 
-                    <h4 className={`text-base font-black transition-colors ${
-                      isSelected ? 'text-white text-lg' : 'text-slate-300'
+                    <h4 className={`text-xl font-black relative z-10 transition-colors ${
+                      isSelected ? 'text-white text-2xl' : 'text-slate-300'
                     }`}>
                       {step.title}
                     </h4>
 
-                    <p className="text-xs text-slate-400 leading-relaxed mt-2 line-clamp-2 md:line-clamp-3">
+                    <p className="text-sm text-slate-400 leading-relaxed mt-3 relative z-10 font-medium">
                       {step.description}
                     </p>
 

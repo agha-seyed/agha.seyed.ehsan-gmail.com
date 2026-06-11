@@ -7,7 +7,7 @@ import { FlowchartEditor, FlowchartViewer } from './FlowchartStudio';
 import VoiceAssistant from './src/VoiceAssistant';
 import { auth, db } from './src/firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { collection, addDoc, getDocs, doc, setDoc, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, setDoc, query, where, serverTimestamp, orderBy } from 'firebase/firestore';
 
 // --- Error Handler Helper for Rules ---
 enum OperationType { CREATE='create', UPDATE='update', DELETE='delete', LIST='list', GET='get', WRITE='write' };
@@ -130,19 +130,30 @@ const ToggleCard = ({ label, checked, onChange, icon, children, description }: a
   </div>
 );
 
-const AudioWaveform = ({ src }: { src: string }) => {
+const AudioWaveform = ({ src, bgmSrc }: { src: string, bgmSrc?: string }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const bgmRef = useRef<HTMLAudioElement>(null);
+
   const togglePlay = () => {
-    if (audioRef.current) {
-      if (isPlaying) audioRef.current.pause();
-      else audioRef.current.play();
-      setIsPlaying(!isPlaying);
+    if (isPlaying) {
+      if (audioRef.current) audioRef.current.pause();
+      if (bgmRef.current) bgmRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      if (audioRef.current) audioRef.current.play();
+      if (bgmRef.current) {
+        bgmRef.current.currentTime = 0;
+        bgmRef.current.volume = 0.3;
+        bgmRef.current.play();
+      }
+      setIsPlaying(true);
     }
   };
   return (
     <div className="w-full bg-black/40 border border-white/10 rounded-3xl p-8 flex flex-col items-center justify-center gap-6 shadow-xl backdrop-blur-md">
-      <audio ref={audioRef} src={src} onEnded={() => setIsPlaying(false)} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} className="hidden" />
+      <audio ref={audioRef} src={src} onEnded={() => { setIsPlaying(false); bgmRef.current?.pause(); }} onPause={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} className="hidden" />
+      {bgmSrc && <audio ref={bgmRef} src={bgmSrc} loop className="hidden" />}
       <button onClick={togglePlay} className="w-20 h-20 bg-amber-500 rounded-full flex items-center justify-center text-teal-950 shadow-2xl hover:scale-110 transition-transform group">
         {isPlaying ? (
           <svg className="w-8 h-8 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
@@ -247,6 +258,48 @@ export default function App() {
     catch (e) { showToast('Login failed', 'error'); }
   };
   
+  const [recentProjects, setRecentProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+        setRecentProjects([]);
+        return;
+    }
+    const fetchProjects = async () => {
+        setLoadingProjects(true);
+        try {
+            const q = query(
+                collection(db, 'projects'),
+                where('userId', '==', user.uid)
+            );
+            const snapshot = await getDocs(q);
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            data.sort((a: any, b: any) => {
+                const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+                return tB - tA;
+            });
+            setRecentProjects(data);
+        } catch (error: any) {
+             console.error('Error fetching projects', error);
+             // handleFirestoreError(error, OperationType.LIST, 'projects');
+        } finally {
+            setLoadingProjects(false);
+        }
+    };
+    fetchProjects();
+  }, [user]);
+
+  const loadProject = (project: any) => {
+      setProjectData(project.projectData);
+      if (project.prefs) setPrefs(project.prefs);
+      else setPrefs({ ...prefs, topic: project.topic });
+      setStep(2);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('پروژه بازیابی شد', 'success');
+  };
+
   const saveProject = async () => {
     if (!user) return showToast('ابتدا وارد شوید', 'error');
     if (!projectData) return;
@@ -255,10 +308,14 @@ export default function App() {
         userId: user.uid,
         topic: prefs.topic,
         projectData,
+        prefs,
         createdAt: serverTimestamp()
       });
       showToast('پروژه ذخیره شد', 'success');
-    } catch(e) {
+      
+      const newProj = { id: docRef.id, topic: prefs.topic, projectData, prefs, userId: user.uid, createdAt: { toMillis: () => Date.now() } };
+      setRecentProjects(prev => [newProj, ...prev]);
+    } catch(e: any) {
       handleFirestoreError(e, OperationType.CREATE, 'projects');
     }
   };
@@ -410,14 +467,47 @@ export default function App() {
                 >
                   استودیو <span className="text-amber-500">فوق هوشمند</span> محتوا
                 </motion.h2>
-                <p className="text-teal-200/40 text-xl max-w-3xl mx-auto font-medium leading-relaxed">یک موضوع بدهید، تمام دارایی‌های محتوایی (سناریو، تصویر، صدا، ویدیو و اینفوگرافی) را در چند ثانیه تحویل بگیرید.</p>
+                <p className="text-teal-200/40 text-xl max-w-3xl mx-auto font-medium leading-relaxed mb-10">یک موضوع بدهید، تمام دارایی‌های محتوایی (سناریو، تصویر، صدا، ویدیو و اینفوگرافی) را در چند ثانیه تحویل بگیرید.</p>
             </div>
+
+            {user && (recentProjects.length > 0 || loadingProjects) && (
+                <div className="bg-[#051a1d]/60 border border-white/5 rounded-[3rem] p-8 lg:p-12 backdrop-blur-xl shadow-2xl">
+                    <SectionHeading title="پروژه‌های ذخیره شده" icon="🕰️" color="indigo" sub="Recent Projects" />
+                    {loadingProjects ? (
+                        <div className="flex items-center justify-center py-10">
+                            <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    ) : (
+                        <div className="flex overflow-x-auto gap-6 sm:grid sm:grid-cols-3 sm:overflow-visible pb-4 scrollbar-hide">
+                            {recentProjects.map(proj => (
+                                <div key={proj.id} className="min-w-[280px] sm:min-w-0 bg-gradient-to-tr from-black/60 to-[#020d0f]/60 border border-white/5 rounded-[2rem] p-6 hover:border-emerald-500/40 hover:bg-[#031416]/80 transition-all cursor-pointer group flex flex-col justify-between shadow-lg" onClick={() => loadProject(proj)}>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <span className="text-xs font-black text-amber-500 bg-amber-500/10 px-3 py-1 rounded-full">{proj.topic ? (proj.topic.length > 30 ? proj.topic.substring(0,30) + '...' : proj.topic) : 'بدون موضوع'}</span>
+                                            <span className="text-[10px] text-slate-500 font-mono">
+                                                {proj.createdAt?.toMillis ? new Date(proj.createdAt.toMillis()).toLocaleDateString('fa-IR') : ''}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-slate-300 font-medium line-clamp-2 leading-relaxed">
+                                            {proj.prefs?.targetAudience || 'استراتژی و محتوای سفارشی'}
+                                        </p>
+                                    </div>
+                                    <div className="mt-6 flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity text-teal-400">
+                                        <span className="text-lg">←</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest">ادامه ویرایش</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
               
               {/* LEFT: MAIN INPUTS */}
               <div className="lg:col-span-8 space-y-10">
-                <div className="bg-[#051a1d]/60 border border-white/5 rounded-[3rem] p-8 lg:p-12 space-y-10 backdrop-blur-xl shadow-2xl">
+                <div className="bg-gradient-to-b from-[#051a1d]/80 to-[#031012]/80 border border-white/5 hover:border-emerald-500/20 rounded-[3rem] p-8 lg:p-12 space-y-10 backdrop-blur-2xl shadow-2xl transition-all duration-500">
                     <SectionHeading title="اطلاعات پایه محتوا" icon="📋" color="amber" sub="Topic & Context" />
                     
                     <div className="space-y-8">
@@ -488,7 +578,7 @@ export default function App() {
               {/* RIGHT: SECONDARY INPUTS */}
               <div className="lg:col-span-4 space-y-10">
                  {/* VISUALS SECTION */}
-                 <div className="bg-[#051a1d]/60 border border-white/5 rounded-[3rem] p-8 backdrop-blur-xl shadow-2xl h-full flex flex-col">
+                 <div className="bg-gradient-to-br from-[#051a1d]/80 to-[#020d0f]/80 border border-white/5 hover:border-amber-500/20 rounded-[3rem] p-8 backdrop-blur-2xl shadow-2xl h-full flex flex-col transition-all duration-500">
                     <SectionHeading title="بخش بصری و مدیا" icon="🖼️" color="indigo" sub="Video & Images" />
                     
                     <div className="flex-1 space-y-6">
@@ -787,14 +877,28 @@ export default function App() {
                         {/* AUDIO PLAYER */}
                         {prefs.needsAudio && assets.audioUrl && (
                             <div className="pt-8 border-t border-white/10 space-y-6">
-                                <h4 className="text-[10px] font-black text-teal-500 uppercase tracking-widest">فایل صوتی ضبط شده</h4>
-                                <AudioWaveform src={assets.audioUrl} />
+                                <h4 className="text-[10px] font-black text-teal-500 uppercase tracking-widest">فایل صوتی ضبط شده {prefs.needsBackgroundMusic && ' (همراه با موسیقی پس‌زمینه)'}</h4>
+                                <AudioWaveform src={assets.audioUrl} bgmSrc={assets.musicUrl} />
                                 <ActionButton onClick={() => {
                                     const link = document.createElement('a');
                                     link.href = assets.audioUrl!;
                                     link.download = 'voiceover-final.wav';
                                     link.click();
                                 }} variant="success" label="دانلود نریشن (WAV)" className="w-full" icon="🎧" />
+                            </div>
+                        )}
+                        
+                        {/* BACKGROUND MUSIC PLAYER */}
+                        {prefs.needsBackgroundMusic && assets.musicUrl && (
+                            <div className="pt-8 border-t border-white/10 space-y-6">
+                                <h4 className="text-[10px] font-black text-teal-500 uppercase tracking-widest">موسیقی پس‌زمینه</h4>
+                                <AudioWaveform src={assets.musicUrl} />
+                                <ActionButton onClick={() => {
+                                    const link = document.createElement('a');
+                                    link.href = assets.musicUrl!;
+                                    link.download = 'bgm-final.wav';
+                                    link.click();
+                                }} variant="success" label="دانلود موسیقی (WAV)" className="w-full" icon="🎵" />
                             </div>
                         )}
                     </div>
